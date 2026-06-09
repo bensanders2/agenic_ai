@@ -25,7 +25,7 @@ The goal: transition from BI Analyst into AI/ML engineering roles by building ve
 | Course | Provider | Cost | Status |
 |--------|----------|------|--------|
 | AWS Foundations of Prompt Engineering | AWS (Skill Builder) | Free | ✅ |
-| Google Cloud: Prompt Engineering Guide | Google / Coursera | Free | ⬜ |
+| Google Cloud: Prompt Engineering Guide | Google / Coursera | Free | √  |
 
 > **Note:** These are intentionally lightweight. You already have real prompting experience — these are resume line items, not learning priorities.
 
