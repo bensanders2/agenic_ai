@@ -118,7 +118,7 @@ The goal: transition from BI Analyst into AI/ML engineering roles by building ve
 
 | Cert | Issuer | Earned |
 |------|--------|--------|
-| AWS Foundations of Prompt Engineering | Amazon Web Services | ⬜ |
+| AWS Foundations of Prompt Engineering | Amazon Web Services | ✅|
 | Google Cloud Prompt Engineering Guide | Google | ⬜ |
 | AI Agentic Design Patterns with AutoGen | DeepLearning.AI | ⬜ |
 | AI Agents in LangGraph | DeepLearning.AI | ⬜ |
