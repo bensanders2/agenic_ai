@@ -132,3 +132,363 @@ chat_result.summary        # conversation summary
   <li>Termination can be fixed turns (<code>max_turns</code>) or condition-based (<code>is_termination_msg</code>)</li>
   <li>Token usage and cost are tracked in <code>chat_result.cost</code></li>
 </ul>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tool Use in Nested Chat Between Agents - Summary</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 40px;
+      color: #222;
+    }
+    h1, h2, h3 {
+      color: #1a4d8f;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 14px;
+      border-radius: 8px;
+      overflow-x: auto;
+      border: 1px solid #ddd;
+    }
+    code {
+      font-family: Consolas, monospace;
+    }
+    .section {
+      margin-bottom: 32px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Summary: Tool Use in Nested Chat Between Agents</h1>
+
+  <div class="section">
+    <h2>Overview</h2>
+    <p>
+      This lesson demonstrates how to use <strong>tools inside nested chats</strong> in AutoGen by building a
+      conversational chess game. Two AI agents act as chess players, and each player can call tools to inspect
+      legal moves and make valid moves on the board. A third agent, the <strong>Board Proxy</strong>, executes
+      the tools and manages the board state.
+    </p>
+    <p>
+      The main idea is that each player performs an internal nested chat with the board proxy before replying
+      to the opposing player. This allows tool use to happen behind the scenes while the outer conversation
+      remains natural and easy to follow.
+    </p>
+    <pre><code>llm_config = {"model": "gpt-4-turbo"}
+
+import chess
+import chess.svg
+from typing_extensions import Annotated</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>1. Setup</h2>
+    <p>
+      The lesson begins by setting up the language model configuration and importing the libraries needed to
+      support the chess environment. GPT-4 Turbo is used because it performs better at chess than earlier models.
+      The Python chess library is used to manage the board and legal moves.
+    </p>
+    <pre><code>llm_config = {"model": "gpt-4-turbo"}
+
+import chess
+import chess.svg
+from typing_extensions import Annotated</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>2. Initialize the Chess Board</h2>
+    <p>
+      A new chess board is created, and a boolean variable is initialized to track whether a move has been made.
+      This variable is later used as part of the stopping condition for the board proxy agent.
+    </p>
+    <pre><code>board = chess.Board()
+
+made_move = False</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>3. Define the Needed Tools</h2>
+    <p>
+      Two tools are created for the chess game. The first tool returns all legal moves in UCI format. The second
+      tool accepts a move in UCI format, updates the board, displays the board state, identifies the moved piece,
+      and returns a readable description of the move.
+    </p>
+
+    <h3>Tool 1: Get Legal Moves</h3>
+    <pre><code>def get_legal_moves(
+    
+) -&gt; Annotated[str, "A list of legal moves in UCI format"]:
+    return "Possible moves are: " + ",".join(
+        [str(move) for move in board.legal_moves]
+    )</code></pre>
+
+    <h3>Tool 2: Make a Move</h3>
+    <pre><code>def make_move(
+    move: Annotated[str, "A move in UCI format."]
+) -&gt; Annotated[str, "Result of the move."]:
+    move = chess.Move.from_uci(move)
+    board.push_uci(str(move))
+    global made_move
+    made_move = True
+    
+    # Display the board.
+    display(
+        chess.svg.board(
+            board,
+            arrows=[(move.from_square, move.to_square)],
+            fill={move.from_square: "gray"},
+            size=200
+        )
+    )
+    
+    # Get the piece name.
+    piece = board.piece_at(move.to_square)
+    piece_symbol = piece.unicode_symbol()
+    piece_name = (
+        chess.piece_name(piece.piece_type).capitalize()
+        if piece_symbol.isupper()
+        else chess.piece_name(piece.piece_type)
+    )
+    return f"Moved {piece_name} ({piece_symbol}) from "\
+    f"{chess.SQUARE_NAMES[move.from_square]} to "\
+    f"{chess.SQUARE_NAMES[move.to_square]}."</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>4. Create Agents</h2>
+    <p>
+      Next, the lesson creates three agents:
+    </p>
+    <ul>
+      <li><strong>Player White</strong>, who plays as white</li>
+      <li><strong>Player Black</strong>, who plays as black</li>
+      <li><strong>Board Proxy</strong>, who executes tools and stops when a move is completed</li>
+    </ul>
+    <p>
+      The player agents are given system instructions telling them to first check legal moves and then make a move.
+      The board proxy does not use an LLM and instead acts as a control and execution layer.
+    </p>
+    <pre><code>from autogen import ConversableAgent
+
+# Player white agent
+player_white = ConversableAgent(
+    name="Player White",
+    system_message="You are a chess player and you play as white. "
+    "First call get_legal_moves(), to get a list of legal moves. "
+    "Then call make_move(move) to make a move.",
+    llm_config=llm_config,
+)
+
+# Player black agent
+player_black = ConversableAgent(
+    name="Player Black",
+    system_message="You are a chess player and you play as black. "
+    "First call get_legal_moves(), to get a list of legal moves. "
+    "Then call make_move(move) to make a move.",
+    llm_config=llm_config,
+)
+
+def check_made_move(msg):
+    global made_move
+    if made_move:
+        made_move = False
+        return True
+    else:
+        return False
+
+board_proxy = ConversableAgent(
+    name="Board Proxy",
+    llm_config=False,
+    is_termination_msg=check_made_move,
+    default_auto_reply="Please make a move.",
+    human_input_mode="NEVER",
+)</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>5. Register the Tools</h2>
+    <p>
+      The tools must be registered for both the calling agents and the executing agent. In this case, each player
+      can propose tool calls, and the board proxy executes them. AutoGen automatically creates the correct tool
+      definitions from the Python functions and annotations.
+    </p>
+    <pre><code>from autogen import register_function
+
+for caller in [player_white, player_black]:
+    register_function(
+        get_legal_moves,
+        caller=caller,
+        executor=board_proxy,
+        name="get_legal_moves",
+        description="Get legal moves.",
+    )
+    
+    register_function(
+        make_move,
+        caller=caller,
+        executor=board_proxy,
+        name="make_move",
+        description="Call this tool to make a move.",
+    )
+
+player_black.llm_config["tools"]</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>6. Register the Nested Chats</h2>
+    <p>
+      Each player is configured with a nested chat that triggers when it receives a message from the opponent.
+      Inside that nested chat, the board proxy starts a conversation with the player so the player can call the
+      tools, make a move, and return the result. The outer conversation only sees the summary of that nested chat.
+    </p>
+    <pre><code>player_white.register_nested_chats(
+    trigger=player_black,
+    chat_queue=[
+        {
+            "sender": board_proxy,
+            "recipient": player_white,
+            "summary_method": "last_msg",
+        }
+    ],
+)
+
+player_black.register_nested_chats(
+    trigger=player_white,
+    chat_queue=[
+        {
+            "sender": board_proxy,
+            "recipient": player_black,
+            "summary_method": "last_msg",
+        }
+    ],
+)</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>7. Start the Game</h2>
+    <p>
+      Once everything is defined, a new board is created and the chess game begins. Player Black starts the chat
+      by sending the message, “Let’s play chess! Your move.” Player White then triggers its nested chat with the
+      board proxy, gets legal moves, selects one, and makes the move.
+    </p>
+    <p>
+      The lesson notes that GPT-4 is recommended for better results, and move choices may vary from run to run.
+    </p>
+    <pre><code>board = chess.Board()
+
+chat_result = player_black.initiate_chat(
+    player_white,
+    message="Let's play chess! Your move.",
+    max_turns=2,
+)</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>8. Adding Fun Chit-Chat</h2>
+    <p>
+      To make the game more engaging, the player agents are recreated with updated system messages that tell them
+      to add friendly banter after each move. The tools are registered again, and the nested chats are set to
+      <code>silent=True</code> so the inner tool-use conversation is hidden from view.
+    </p>
+    <p>
+      This results in a more entertaining outer conversation where the players not only make moves but also
+      comment on the game and challenge one another.
+    </p>
+    <pre><code>player_white = ConversableAgent(
+    name="Player White",
+    system_message="You are a chess player and you play as white. "
+    "First call get_legal_moves(), to get a list of legal moves. "
+    "Then call make_move(move) to make a move. "
+    "After a move is made, chitchat to make the game fun.",
+    llm_config=llm_config,
+)
+
+player_black = ConversableAgent(
+    name="Player Black",
+    system_message="You are a chess player and you play as black. "
+    "First call get_legal_moves(), to get a list of legal moves. "
+    "Then call make_move(move) to make a move. "
+    "After a move is made, chitchat to make the game fun.",
+    llm_config=llm_config,
+)
+
+for caller in [player_white, player_black]:
+    register_function(
+        get_legal_moves,
+        caller=caller,
+        executor=board_proxy,
+        name="get_legal_moves",
+        description="Get legal moves.",
+    )
+
+    register_function(
+        make_move,
+        caller=caller,
+        executor=board_proxy,
+        name="make_move",
+        description="Call this tool to make a move.",
+    )
+
+player_white.register_nested_chats(
+    trigger=player_black,
+    chat_queue=[
+        {
+            "sender": board_proxy,
+            "recipient": player_white,
+            "summary_method": "last_msg",
+            "silent": True,
+        }
+    ],
+)
+
+player_black.register_nested_chats(
+    trigger=player_white,
+    chat_queue=[
+        {
+            "sender": board_proxy,
+            "recipient": player_black,
+            "summary_method": "last_msg",
+            "silent": True,
+        }
+    ],
+)
+
+board = chess.Board()
+
+chat_result = player_black.initiate_chat(
+    player_white,
+    message="Let's play chess! Your move.",
+    max_turns=2,
+)</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>9. Optional Human Input</h2>
+    <p>
+      If you want a human to participate in the game, you can enable manual input by setting
+      <code>human_input_mode="ALWAYS"</code> for both player agents.
+    </p>
+    <pre><code># Note: To add human input to this game, add:
+human_input_mode="ALWAYS"</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>Main Takeaway</h2>
+    <p>
+      This lesson shows a practical pattern for combining <strong>tool use</strong> with <strong>nested chat</strong>.
+      The player agents propose tool calls, the board proxy executes them, and the internal move-validation process
+      stays hidden inside the nested chat. This makes it possible to create an experience that feels like a smooth
+      conversation while still relying on structured tool-based actions in the background.
+    </p>
+    <p>
+      The example also shows how easily the experience can be extended, such as by adding chit-chat or human input,
+      and sets the stage for more advanced tool-use patterns in later lessons.
+    </p>
+  </div>
+</body>
+</html>
